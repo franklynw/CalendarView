@@ -13,6 +13,8 @@ public struct FWCalendarView: UIViewRepresentable {
     
     public struct CalendarEvent: Hashable, Identifiable {
         public let eventIdentifier: String
+        public let eventStartDate: Date
+        public let isAllDay: Bool
         public let title: String
         public let date: Date // not the same as the event startDate, but the date it's shown in the calendar view
         
@@ -101,7 +103,7 @@ public struct FWCalendarView: UIViewRepresentable {
         init(_ parent: FWCalendarView) {
             
             self.parent = parent
-            calendar = parent.calendarManager.config.calendar ?? .current
+            calendar = parent.calendarManager.config.calendar
             
             super.init()
             
@@ -192,14 +194,18 @@ public struct FWCalendarView: UIViewRepresentable {
         }
         
         /*
-         This is only used pre-iOS 16.2, as the UICalendarViewDelegate function calendarView(_ calendarView:didChangeVisibleDateComponentsFrom:) isn't called,
-         another one of Apple's silently fixed "bugs"
+         This is only used pre-iOS 16.2, as the UICalendarViewDelegate function calendarView(_ calendarView:didChangeVisibleDateComponentsFrom:) isn't called
          */
         @objc
         private func checkVisibleDateComponents() {
             if calendarView?.visibleDateComponents != previousDateComponents {
                 if let visibleDateComponents = calendarView?.visibleDateComponents, let previousDateComponents = previousDateComponents {
                     parent.calendarManager.calendarDateComponents = .init(visibleDateComponents: visibleDateComponents, previousDateComponents: previousDateComponents)
+                    if abs(calendar.date(from: previousDateComponents)!.timeIntervalSince(calendar.date(from: visibleDateComponents)!)) > .month {
+                        // if the user has selected another month from the picker
+                        parent.calendarManager.currentCalendarVisibleStartDate = calendar.date(from: visibleDateComponents)!.startOfMonth()
+                        parent.calendarManager.refreshCurrentCalendar()
+                    }
                 }
                 previousDateComponents = calendarView?.visibleDateComponents
             }
@@ -238,4 +244,3 @@ fileprivate class CalendarViewWrapper: UICalendarView {
         killAction?()
     }
 }
-

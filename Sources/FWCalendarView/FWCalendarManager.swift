@@ -12,14 +12,14 @@ import EventKit
 public class FWCalendarManager: ObservableObject {
     
     public struct Config {
-        let calendar: Calendar? // defaults to .current if nil
+        let calendar: Calendar
         let dateRange: DateInterval? // if nil then open-ended
         let calendarsFilter: (EKCalendar) -> Bool
         
         public static let `default`: Config = .init()
         
         public init(calendar: Calendar? = nil, dateRange: DateInterval? = nil, calendarsFilter: ((EKCalendar) -> Bool)? = nil) {
-            self.calendar = calendar
+            self.calendar = calendar ?? .current
             self.dateRange = dateRange
             self.calendarsFilter = calendarsFilter ?? { _ in true }
         }
@@ -42,14 +42,15 @@ public class FWCalendarManager: ObservableObject {
     }()
     
     private var subscriptions = Set<AnyCancellable>()
-    private let eventStore = EKEventStore()
     
     let config: Config
     
-    private var currentCalendarVisibleStartDate = Date().startOfMonth()
+    var currentCalendarVisibleStartDate = Date().startOfMonth()
     
     @Published var events: [String: Set<FWCalendarView.CalendarEvent>] = [:] // key is eventDateKeyFormatter string from date
     @Published var calendarDateComponents: FWCalendarView.CalendarDateComponents?
+    
+    public let eventStore = EKEventStore()
     
     @Published public var calendars: [EKCalendar] = []
     @Published public var selectedCalendar: EKCalendar?
@@ -82,6 +83,47 @@ public class FWCalendarManager: ObservableObject {
     public func selectCalendar(withIdentifier calendarIdentifier: String?) {
         let calendar = calendars.first { $0.calendarIdentifier == calendarIdentifier }
         selectCalendar(calendar)
+    }
+    
+    public func event(forIdentifier identifier: String, on date: Date?) -> EKEvent? {
+        guard let selectedCalendar = selectedCalendar else {
+            return nil
+        }
+        
+        if let date = date {
+            let start = date.startOfDay()
+            let end = date.endOfDay()
+            let predicate = eventStore.predicateForEvents(withStart: start, end: end, calendars: [selectedCalendar])
+            let events = eventStore.events(matching: predicate) as [EKEvent]
+            return events.first { $0.eventIdentifier == identifier }
+        } else {
+            return eventStore.event(withIdentifier: identifier)
+        }
+    }
+    
+    public func newEvent(for date: Date) -> EKEvent? {
+        guard let selectedCalendar = selectedCalendar else {
+            return nil
+        }
+        
+        let event = EKEvent(eventStore: eventStore)
+        let date = date.toNearestNextHour()
+        event.startDate = date
+        event.endDate = date + .hour
+        event.calendar = selectedCalendar
+        
+        return event
+    }
+    
+    public func refresh() {
+        fetchEvents(for: currentCalendarVisibleStartDate)
+    }
+    
+    
+    // MARK: private/internal
+    
+    func refreshCurrentCalendar() {
+        selectCalendar(selectedCalendar)
     }
     
     private func calendarDidChangeVisibleDateComponents(to newDateComponents: DateComponents, from previousDateComponents: DateComponents) {
@@ -134,7 +176,7 @@ public class FWCalendarManager: ObservableObject {
                     return
                 }
                 stride(from: eventStartDate, to: eventEndDate, by: .day).forEach { eventDate in
-                    let newEvent = FWCalendarView.CalendarEvent(eventIdentifier: event.eventIdentifier, title: event.title, date: eventDate)
+                    let newEvent = FWCalendarView.CalendarEvent(eventIdentifier: event.eventIdentifier, eventStartDate: event.startDate, isAllDay: event.isAllDay, title: event.title, date: eventDate)
                     let eventKey = newEvent.eventKey
                     if var events = updatedEvents[eventKey] {
                         events.insert(newEvent)
