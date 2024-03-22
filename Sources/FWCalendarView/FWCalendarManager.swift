@@ -14,12 +14,14 @@ public class FWCalendarManager: ObservableObject {
     public struct Config {
         let calendar: Calendar? // defaults to .current if nil
         let dateRange: DateInterval? // if nil then open-ended
+        let calendarsFilter: (EKCalendar) -> Bool
         
         public static let `default`: Config = .init()
         
-        init(calendar: Calendar? = nil, dateRange: DateInterval? = nil) {
+        public init(calendar: Calendar? = nil, dateRange: DateInterval? = nil, calendarsFilter: ((EKCalendar) -> Bool)? = nil) {
             self.calendar = calendar
             self.dateRange = dateRange
+            self.calendarsFilter = calendarsFilter ?? { _ in true }
         }
     }
     
@@ -44,17 +46,20 @@ public class FWCalendarManager: ObservableObject {
     
     let config: Config
     
-    @Published public var selectedDate: FWCalendarView.SelectedDate?
+    private var currentCalendarVisibleStartDate = Date().startOfMonth()
+    
     @Published var events: [String: Set<FWCalendarView.CalendarEvent>] = [:] // key is eventDateKeyFormatter string from date
     @Published var calendarDateComponents: FWCalendarView.CalendarDateComponents?
     
-    private var currentCalendarVisibleStartDate = Date().startOfMonth()
-    private var selectedCalendar: EKCalendar?
+    @Published public var calendars: [EKCalendar] = []
+    @Published public var selectedCalendar: EKCalendar?
     
     
     public init(config: Config = .default) {
         
         self.config = config
+        
+        calendars = eventStore.calendars(for: .event).filter(config.calendarsFilter)
         
         $calendarDateComponents
             .sink { [weak self] components in
@@ -69,10 +74,14 @@ public class FWCalendarManager: ObservableObject {
     public func selectCalendar(_ calendar: EKCalendar?) {
         
         selectedCalendar = calendar
-        
         events.removeAll()
         
         fetchEvents(for: currentCalendarVisibleStartDate.startOfPreviousMonth(), period: .quarter)
+    }
+    
+    public func selectCalendar(withIdentifier calendarIdentifier: String?) {
+        let calendar = calendars.first { $0.calendarIdentifier == calendarIdentifier }
+        selectCalendar(calendar)
     }
     
     private func calendarDidChangeVisibleDateComponents(to newDateComponents: DateComponents, from previousDateComponents: DateComponents) {

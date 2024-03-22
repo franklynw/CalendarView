@@ -58,6 +58,7 @@ public struct FWCalendarView: UIViewRepresentable {
     
     private var defaultDecoration: Decoration?
     private var decorationsProvider: ((Date) -> UICalendarView.Decoration?)?
+    private var selectedDate: ((SelectedDate) -> ())?
     
     
     public init(calendarManager: FWCalendarManager) {
@@ -180,11 +181,10 @@ public struct FWCalendarView: UIViewRepresentable {
         
         public func dateSelection(_ selection: UICalendarSelectionSingleDate, didSelectDate dateComponents: DateComponents?) {
             guard let dateComponents = dateComponents, let date = calendar.date(from: dateComponents) else {
-                parent.calendarManager.selectedDate = nil
                 return
             }
             let events = self.events[CalendarEvent.eventKey(for: date)] ?? []
-            parent.calendarManager.selectedDate = .init(date: date, events: events)
+            parent.selectedDate?(.init(date: date, events: events))
         }
         
         public func dateSelection(_ selection: UICalendarSelectionSingleDate, canSelectDate dateComponents: DateComponents?) -> Bool {
@@ -209,6 +209,12 @@ public struct FWCalendarView: UIViewRepresentable {
 
 
 public extension FWCalendarView {
+    
+    func onSelectDate(_ selectedDate: @escaping (SelectedDate) -> ()) -> Self {
+        var copy = self
+        copy.selectedDate = selectedDate
+        return copy
+    }
     
     func defaultDecoration(_ defaultDecoration: Decoration) -> Self {
         var copy = self
